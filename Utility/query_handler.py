@@ -6,3 +6,5 @@ class query_handler:
                             "inner join party as c on c.party_id = b.party_id " \
                             "inner join legit as d on d.legit_id = a.res_legit_id" \
                             " WHERE replace(replace(b.candi_name,' ',''),'.','') = %s and c.party_id = %s"
+
+    sData = "select * from candidates where lower(REPLACE(REPLACE(candi_name, ' ', ''), '.', '')) LIKE %s and party_id = %s;"

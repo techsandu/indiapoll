@@ -9,7 +9,7 @@ from Utility.common_classes import Common as c
 from Utility.common_classes import MyCustomException as ex
 from Utility.query_handler import query_handler as query
 from Utility.data_cleaner import data_clear as dc
-
+import math
 import re
 
 
@@ -21,58 +21,21 @@ def remove_whitespace_after_period(input_string):
 def remove_spaces_and_dots(input_string):
     cleaned_string = input_string.replace(" ", "").replace(".", "")
     return cleaned_string
-
-def handle_candidte(data,party,legit,result_year):
-    candi_Array = []
-    for i,j in data.iterrows():
-        result_dict = {}
-        candi_name = j["CANDIDATE NAME"]
-        if candi_name[0].isdigit:
-            candi_name = c.remove_until_first_space(j["CANDIDATE NAME"])
-        temp_candi_name = remove_spaces_and_dots(candi_name)
-        party_id = party[j["PARTY"].lower()]
-        #check data is already avaliable
-        candi_select_query = query.new_cand_select_query
-        candi_data = (temp_candi_name,party_id)
-        candi_id_Array = utility.select_query(candi_select_query,candi_data)
-        candi_id = None
-        if len(candi_id_Array) == 0:
-            age = 0
-            if pd.isna(j["AGE"]):
-                age = 0
-            else:
-                age = j["AGE"]
-            sex = "NA"
-            if pd.isna(j["SEX"]):
-                sex = "NA"
-            else:
-                sex = j["SEX"]
-            insert_data = (candi_name,party_id,age,sex,"")
-            insert_candi_query = "insert into candidates(candi_name,party_id,candi_age,candi_sex,candi_category) values(%s,%s,%s,%s,%s)  RETURNING candi_id;"
-            insert_result = utility.insert_single(insert_candi_query,insert_data)
-            candi_id = insert_result
-        else:
-            candi_id = candi_id_Array[0][0]
-        single_result = {}
-        single_result["acc_name"] = legit[j["AC NAME"]]
-        single_result["candidate"] = candi_id
-        single_result["year"] = result_year
-        single_result["type"] = "legit"
-        single_result['total'] = j["TOTAL"]
-        candi_Array.append(single_result)
-    return candi_Array
 def handle_old_candidate(data,party,legit,result_year):
     candi_Array = []
     for i, j in data.iterrows():
         result_dict = {}
         candi_name = j["Candidate Name"]
-        temp_candi_name = remove_spaces_and_dots(candi_name)
+        candi_name = re.sub(r'^\d\s*', '', candi_name)
+        temp_candi_name = remove_spaces_and_dots(candi_name).lower()
         tem_party = dc.party_cleaner(j[" Party Name"].lower())
         party_id = party[tem_party]
+        if legit[j["Constituency Name"]] == 81:
+            print("You need tp ")
 
         # check data is already avaliable
-        candi_select_query = query.new_cand_select_query
-        candi_data = (temp_candi_name, party_id)
+        candi_select_query = query.sData
+        candi_data = (temp_candi_name,party_id)
         candi_id_Array = utility.select_query(candi_select_query, candi_data)
         candi_id = None
         if len(candi_id_Array) == 0:
@@ -97,7 +60,10 @@ def handle_old_candidate(data,party,legit,result_year):
         single_result["candidate"] = candi_id
         single_result["year"] = result_year
         single_result["type"] = "legit"
-        single_result['total'] = j[" Total Valid Votes"]
+        if math.isnan(j[" Total Valid Votes"]):
+            single_result['total'] = 0
+        else:
+            single_result['total'] = int(j[" Total Valid Votes"])
         candi_Array.append(single_result)
     return candi_Array
 
@@ -130,7 +96,7 @@ def handle_legit(data,state):
         else:
             legit_dict[items] = legit_id_Array[0][0]
     return legit_dict
-def insert_data(data,result_year,type,state):
+def insert_data(data,type,state):
 
     df = pd.read_csv(data)
     file_name = os.path.basename(data)
@@ -153,34 +119,64 @@ def insert_data(data,result_year,type,state):
     else:
         state_id = state_id_Array[0][0]
         # check_duplicate_data
-    if file_year > '2000':
-        raise ex("code is not present in for file")
-    else:
-        sql_check_data = "select c.state_id, a.res_id, a.res_legit_id, b.legit_id from result_data  as a inner join legit " \
+    sql_check_data = "select c.state_id, a.res_id, a.res_legit_id, b.legit_id from result_data  as a inner join legit " \
                          "as b on a.res_legit_id = b.legit_id inner join states as c on b.state_id = c.state_id where a.res_year = %s and a.res_type = %s and c.state_id = %s"
-        # sql_check_data = "SELECT res_id FROM result_data where res_legit_id = %s and res_year = %s and res_type = %s;"
-        check_data = (str(result_year), type, state_id)
-        sql_check_array = utility.select_query(sql_check_data, check_data)
-        try:
-            if len(sql_check_array) != 0:
-                raise ex("An error occurred. Execution halted.")
+    # sql_check_data = "SELECT res_id FROM result_data where res_legit_id = %s and res_year = %s and res_type = %s;"
+    check_data = (file_year, type, state_id)
+    sql_check_array = utility.select_query(sql_check_data, check_data)
+    try:
+        if len(sql_check_array) != 0:
+            raise ex("An error occurred. Execution halted.")
+        else:
+            if file_year > '2030':
+                # raise ex("code is not present in for file")
+                df = df[df["STATE/UT NAME"] != 'TURN OUT']
+                legit_data = df["AC NAME"].unique()
+                legit_dict = handle_legit(legit_data, state_id)
+                party_data = df["PARTY"].unique()
+                party_dict = handle_party(party_data)
+
+                candy_data = df[
+                    ["AC NAME", "CANDIDATE NAME", "AGE", "SEX", 'CATEGORY',
+                     'PARTY', 'TOTAL']]
+
+                result_data = handle_old_candidate(candy_data, party_dict, legit_dict, file_year)
+                print(result_data)
+                values_tuple_list = [tuple(d.values()) for d in result_data]
+                print(values_tuple_list)
+                insert_result_query = "insert into result_data (res_legit_id,res_candi_id,res_year,res_type,res_total) values (%s,%s,%s,%s,%s)  RETURNING res_id;"
+                utility.insertMany(insert_result_query, values_tuple_list)
+                print(candy_data)
+                print("final")
+
             else:
-                legit_data = df["Constituency Name"].unique()
+                if "STATE/UT NAME" in df :
+                    df = df[df["STATE/UT NAME"] != 'TURN OUT']
+                df = df.rename(columns={'AC NAME': 'Constituency Name'})
+                df = df.rename(columns={'CANDIDATE NAME': 'Candidate Name'})
+                df = df.rename(columns={'AGE': 'Candidate Age'})
+                df = df.rename(columns={'SEX': "Candidate Sex"})
+                df = df.rename(columns={'CATEGORY': 'Candidate Category'})
+                df = df.rename(columns={'PARTY':  ' Party Name'})
+                df = df.rename(columns={'TOTAL': ' Total Valid Votes'})
+                legit_data = df['Constituency Name'].unique()
                 legit_dict = handle_legit(legit_data, state_id)
                 party_data = df[" Party Name"].unique()
                 party_dict = handle_party(party_data)
                 candy_data = df[
                     ["Constituency Name", "Candidate Name", "Candidate Age", "Candidate Sex", 'Candidate Category',
                      ' Party Name', ' Total Valid Votes']]
-                result_data = handle_old_candidate(candy_data, party_dict, legit_dict, result_year)
+                result_data = handle_old_candidate(candy_data, party_dict, legit_dict, file_year)
                 print(result_data)
                 values_tuple_list = [tuple(d.values()) for d in result_data]
                 print(values_tuple_list)
                 insert_result_query = "insert into result_data (res_legit_id,res_candi_id,res_year,res_type,res_total) values (%s,%s,%s,%s,%s)  RETURNING res_id;"
                 utility.insertMany(insert_result_query, values_tuple_list)
-        except ex as e:
-            print("Caught custom exception:", e)
+
+    except ex as e:
+        print("Caught custom exception:", e)
+
 if __name__ == '__main__':
     # insert_legis_data("Files/Legist/kerala_legi_2021.csv",2022,"legit")
-    insert_data("Files/Legist/kerala_legi_2021.csv", 2016, "legit", 'kerala')
-    insert_data("Files/Legist/kerala_legit_2016.csv",2016,"legit",'kerala')
+    insert_data("Files/Legist/Karnataka_legit_2023.csv", "legit", 'karnataka')
+    # insert_data("Files/Legist/kerala_legit_2016.csv",2016,"legit",'kerala')
