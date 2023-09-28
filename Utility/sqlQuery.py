@@ -1,8 +1,7 @@
-import mysql.connector as conn
-import mysql.connector.errors as errorcode
 from Config.config import PostDB as db
 # from Config.config import DB as db
 import psycopg2
+from common_classes import MyCustomException as ex
 class SqlUtility:
     def insert_single(query,data):
         config = {
@@ -11,14 +10,6 @@ class SqlUtility:
             'host': db.host,
             'database': db.database
         }
-
-        # config = {
-        #     'user': 'root',
-        #     'password': 'Thykoodam6655#',
-        #     'host': 'localhost',
-        #     'database': 'india_poll',
-        #     'raise_on_warnings': True
-        # }
         try:
             cnx = psycopg2.connect(**config)
             # cnx = conn.connect(** config)
@@ -28,15 +19,11 @@ class SqlUtility:
             id = cursor.fetchone()[0]
             cnx.commit()
             return id
-        except conn.Error as err:
-            if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                print("Something is wrong with your user name or password")
-            elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                print("Database does not exist")
-            else:
-                print(err)
-        else:
-            cnx.close()
+        except(Exception, psycopg2.Error) as err:
+            print("Error", err)
+            raise ex(err)
+        # else:
+        #     cnx.close()
     def insertMany(query,data):
         config = {
             'user': db.user_name,
@@ -51,13 +38,9 @@ class SqlUtility:
             sql_query = query
             cursor.executemany(sql_query,data)
             cnx.commit()
-        except conn.Error as err:
-            if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                print("Something is wrong with your user name or password")
-            elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                print("Database does not exist")
-            else:
-                print(err)
+        except(Exception, psycopg2.Error) as err:
+            print("Error", err)
+            raise ex(err)
         else:
             cnx.close()
     def select_query(query,data):
@@ -75,13 +58,9 @@ class SqlUtility:
             result = cursor.fetchall()
             return result
             # cnx.commit()
-        except conn.Error as err:
-            if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
-                print("Something is wrong with your user name or password")
-            elif err.errno == errorcode.ER_BAD_DB_ERROR:
-                print("Database does not exist")
-            else:
-                print(err)
+        except(Exception, psycopg2.Error) as err:
+            print("Error", err)
+            raise ex(err)
         else:
             cnx.close()
 
